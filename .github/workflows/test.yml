@@ -1,0 +1,48 @@
+name: Test formulae
+# Installs every formula from this checkout on macOS (Apple silicon, Intel)
+# and Linux, then runs brew test and brew audit --strict.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '23 6 * * 1'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, macos-15-intel, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: '1'
+      HOMEBREW_NO_ANALYTICS: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Put Homebrew on PATH (Linux)
+        if: runner.os == 'Linux'
+        run: echo "/home/linuxbrew/.linuxbrew/bin" >> "$GITHUB_PATH"
+      - name: Tap this checkout
+        run: |
+          brew --version
+          tap="$(brew --repository)/Library/Taps/foldnine/homebrew-tap"
+          mkdir -p "$(dirname "$tap")"
+          ln -s "$GITHUB_WORKSPACE" "$tap"
+      - name: Install, test and audit
+        run: |
+          for f in Formula/*.rb; do
+            name="foldnine/tap/$(basename "$f" .rb)"
+            brew install "$name"
+            brew test "$name"
+            brew audit --strict "$name"
+          done
+      - name: aftergreen smoke test
+        run: |
+          aftergreen version
+          aftergreen http --url https://example.com --status 200 --contains "Example Domain"
